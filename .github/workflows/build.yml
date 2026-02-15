@@ -1,0 +1,96 @@
+name: Build BebeFlix
+
+# Runs when you push code OR when you manually trigger it
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allows manual trigger from GitHub website
+
+jobs:
+
+  # ─────────────────────────────────────────────
+  # Windows Build
+  # ─────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install PySide6 python-vlc pyinstaller
+
+      - name: Install VLC
+        run: |
+          choco install vlc -y --no-progress
+        shell: cmd
+
+      - name: Download FFmpeg
+        run: |
+          mkdir ffmpeg
+          curl -L -o ffmpeg.zip https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+          tar -xf ffmpeg.zip
+          $ffmpegDir = Get-ChildItem -Directory -Filter "ffmpeg-*" | Select-Object -First 1
+          Copy-Item "$($ffmpegDir.FullName)\bin\ffmpeg.exe" "ffmpeg\ffmpeg.exe"
+          Write-Host "FFmpeg ready at ffmpeg\ffmpeg.exe"
+        shell: powershell
+
+      - name: Check dependencies
+        run: python build.py --check
+
+      - name: Build executable
+        run: python build.py
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BebeFlix-Win
+          path: dist/BebeFlix-Win/
+          retention-days: 30
+
+  # ─────────────────────────────────────────────
+  # macOS Build
+  # ─────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install PySide6 python-vlc pyinstaller
+
+      - name: Install VLC
+        run: |
+          brew install --cask vlc
+
+      - name: Install FFmpeg
+        run: |
+          brew install ffmpeg
+          mkdir -p ffmpeg
+          cp $(which ffmpeg) ffmpeg/ffmpeg
+
+      - name: Check dependencies
+        run: python build.py --check
+
+      - name: Build app
+        run: python build.py
+
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BebeFlix-Mac
+          path: dist/BebeFlix-Mac.app/
+          retention-days: 30
