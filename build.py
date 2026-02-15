@@ -16,9 +16,9 @@ import subprocess
 import argparse
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Config
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 APP_NAME = "BebeFlix"
 MAIN_SCRIPT = "main.py"
@@ -44,9 +44,9 @@ VLC_SEARCH_MAC = [
 ]
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Helpers
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def find_vlc_dir() -> str:
     """Locate VLC installation directory."""
@@ -154,68 +154,68 @@ def copy_ffmpeg(ffmpeg_path: str, dest: str):
     print(f"  Copied ffmpeg ({size_mb:.1f} MB)")
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Dependency Check
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def check_deps():
     """Verify all build dependencies exist."""
     print(f"\n{'='*60}")
-    print(f"  BebeFlix Dependency Check — {platform.system()} {platform.machine()}")
+    print(f"  BebeFlix Dependency Check - {platform.system()} {platform.machine()}")
     print(f"{'='*60}\n")
 
     ok = True
 
     # Python
-    print(f"  Python:     {sys.version.split()[0]}  ✓")
+    print(f"  Python:     {sys.version.split()[0]}  [OK]")
 
     # PySide6
     try:
         import PySide6
-        print(f"  PySide6:    {PySide6.__version__}  ✓")
+        print(f"  PySide6:    {PySide6.__version__}  [OK]")
     except ImportError:
-        print(f"  PySide6:    NOT FOUND  ✗  →  pip install PySide6")
+        print(f"  PySide6:    NOT FOUND  [MISSING]  ->  pip install PySide6")
         ok = False
 
     # python-vlc
     try:
         import vlc
-        print(f"  python-vlc: {vlc.__version__ if hasattr(vlc, '__version__') else 'installed'}  ✓")
+        print(f"  python-vlc: {vlc.__version__ if hasattr(vlc, '__version__') else 'installed'}  [OK]")
     except ImportError:
-        print(f"  python-vlc: NOT FOUND  ✗  →  pip install python-vlc")
+        print(f"  python-vlc: NOT FOUND  [MISSING]  ->  pip install python-vlc")
         ok = False
 
     # PyInstaller
     try:
         import PyInstaller
-        print(f"  PyInstaller: {PyInstaller.__version__}  ✓")
+        print(f"  PyInstaller: {PyInstaller.__version__}  [OK]")
     except ImportError:
-        print(f"  PyInstaller: NOT FOUND  ✗  →  pip install pyinstaller")
+        print(f"  PyInstaller: NOT FOUND  [MISSING]  ->  pip install pyinstaller")
         ok = False
 
     # VLC binaries
     vlc_dir = find_vlc_dir()
     if vlc_dir:
-        print(f"  VLC libs:   {vlc_dir}  ✓")
+        print(f"  VLC libs:   {vlc_dir}  [OK]")
     else:
-        print(f"  VLC libs:   NOT FOUND  ✗")
+        print(f"  VLC libs:   NOT FOUND  [MISSING]")
         if sys.platform == "win32":
-            print(f"              → Install VLC 64-bit from https://www.videolan.org")
+            print(f"              -> Install VLC 64-bit from https://www.videolan.org")
         else:
-            print(f"              → Install VLC from https://www.videolan.org")
+            print(f"              -> Install VLC from https://www.videolan.org")
         ok = False
 
     # FFmpeg
     ffmpeg = find_ffmpeg()
     if ffmpeg:
-        print(f"  FFmpeg:     {ffmpeg}  ✓")
+        print(f"  FFmpeg:     {ffmpeg}  [OK]")
     else:
-        print(f"  FFmpeg:     NOT FOUND  ✗")
+        print(f"  FFmpeg:     NOT FOUND  [MISSING]")
         if sys.platform == "win32":
-            print(f"              → Download from https://www.gyan.dev/ffmpeg/builds/")
-            print(f"              → Place ffmpeg.exe in ./ffmpeg/ folder")
+            print(f"              -> Download from https://www.gyan.dev/ffmpeg/builds/")
+            print(f"              -> Place ffmpeg.exe in ./ffmpeg/ folder")
         else:
-            print(f"              → brew install ffmpeg  (or download static build)")
+            print(f"              -> brew install ffmpeg  (or download static build)")
         ok = False
 
     print()
@@ -227,9 +227,9 @@ def check_deps():
     return ok
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Build
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def build():
     print(f"\n{'='*60}")
@@ -339,24 +339,24 @@ def build():
     print(f"  Size:    {total_size / (1024*1024):.1f} MB total")
     print(f"")
     print(f"  USB Drive Layout:")
-    print(f"  ┌─────────────────────────────────────────┐")
-    print(f"  │  ExFAT USB Drive/                       │")
-    print(f"  │  ├── BebeFlix-Win/   ← Windows build    │")
-    print(f"  │  ├── BebeFlix-Mac/   ← macOS build      │")
-    print(f"  │  ├── library/        ← SHARED database  │")
-    print(f"  │  │   ├── catalog.db                     │")
-    print(f"  │  │   └── movies/                        │")
-    print(f"  │  └── ffmpeg/         ← (optional)       │")
-    print(f"  └─────────────────────────────────────────┘")
+    print(f"  +-----------------------------------------+")
+    print(f"  |  ExFAT USB Drive/                       |")
+    print(f"  |  |-- BebeFlix-Win/   <- Windows build    |")
+    print(f"  |  |-- BebeFlix-Mac/   <- macOS build      |")
+    print(f"  |  |-- library/        <- SHARED database  |")
+    print(f"  |  |   |-- catalog.db                     |")
+    print(f"  |  |   +-- movies/                        |")
+    print(f"  |  +-- ffmpeg/         <- (optional)       |")
+    print(f"  +-----------------------------------------+")
     print(f"")
     print(f"  Both platforms share the same library/ folder.")
     print(f"  Format the USB drive as ExFAT for cross-platform.")
     print(f"{'='*60}\n")
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Entry
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=f"Build {APP_NAME}")

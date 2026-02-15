@@ -1,5 +1,5 @@
 """
-BebeFlix — Portable Movie Player
+BebeFlix - Portable Movie Player
 Main entry point.
 """
 
