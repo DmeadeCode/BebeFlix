@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, Slot, QTimer
 from database import Database
 from utils.paths import (get_movies_dir, get_library_root, slugify,
                          make_movie_dir, get_drive_free_space, format_file_size)
-from utils.compression import (PRESETS, PRESET_ORDER, CompressionWorker,
+from utils.compression import (PRESETS, PRESET_ORDER, CompressionThread,
                                 get_embedded_subtitles)
 
 
@@ -31,7 +31,7 @@ class AddMovieDialog(QDialog):
         self._thumb_path = ""
         self._subtitle_paths = []
         self._embedded_subs = []
-        self._compression_worker = CompressionWorker()
+        self._compression_thread = None
         self._is_processing = False
 
         self.setWindowTitle("Add Movie \u2014 BebeFlix")
@@ -247,24 +247,22 @@ class AddMovieDialog(QDialog):
             "title": title, "rel_movie": rel_movie, "rel_thumb": rel_thumb,
             "subtitle_entries": subtitle_entries, "movie_dir": movie_dir
         }
-        self._compression_worker.compress(
-            self._movie_path, movie_dest, preset_key,
-            on_progress=self._on_progress, on_complete=self._on_compression_complete
+
+        preset = PRESETS.get(preset_key)
+        self._compression_thread = CompressionThread(
+            self._movie_path, movie_dest, preset, parent=self
         )
+        self._compression_thread.progress.connect(self._update_progress)
+        self._compression_thread.finished_signal.connect(self._finish_add)
+        self._compression_thread.start()
 
     @Slot(float)
-    def _on_progress(self, percent):
-        QTimer.singleShot(0, lambda: self._update_progress(percent))
-
     def _update_progress(self, percent):
         self.progress_bar.setValue(int(percent))
         if percent < 100:
             self.status_label.setText(f"Processing: {percent:.1f}%")
 
     @Slot(bool, str)
-    def _on_compression_complete(self, success, message):
-        QTimer.singleShot(0, lambda: self._finish_add(success, message))
-
     def _finish_add(self, success, message):
         if not success:
             QMessageBox.critical(self, "Error", f"Failed to process movie:\n{message}")
@@ -283,13 +281,16 @@ class AddMovieDialog(QDialog):
             thumb_path=data["rel_thumb"], subtitle_entries=data["subtitle_entries"]
         )
         self.progress_bar.setValue(100)
-        self.status_label.setText("Movie added successfully! \U0001F389")
+        self.status_label.setText("Movie added successfully!")
         self.movie_added.emit(movie_id)
         QTimer.singleShot(800, self.accept)
 
     def _on_cancel(self):
         if self._is_processing:
-            self._compression_worker.cancel()
+            if self._compression_thread:
+                self._compression_thread.cancel()
+                self._compression_thread.wait(2000)
+                self._compression_thread = None
             self._is_processing = False
             self._reset_ui()
         else:

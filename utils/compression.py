@@ -1,15 +1,17 @@
 """
 FFmpeg compression utility for BebeFlix.
 Handles video compression with presets and progress reporting.
+Uses QThread + Qt Signals for reliable cross-thread communication.
 """
 
 import os
 import re
 import subprocess
 import shutil
-import threading
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
+
+from PySide6.QtCore import QThread, Signal
 
 from utils.paths import get_ffmpeg_path
 
@@ -25,7 +27,7 @@ class CompressionPreset:
     extra_args: list
 
     def __str__(self):
-        return f"{self.name} \u2014 {self.description}"
+        return f"{self.name} - {self.description}"
 
 
 PRESETS = {
@@ -109,48 +111,38 @@ def get_embedded_subtitles(input_path: str) -> list:
         return []
 
 
-class CompressionWorker:
-    def __init__(self):
-        self._process: Optional[subprocess.Popen] = None
+class CompressionThread(QThread):
+    """Background thread for video compression with Qt signal-based progress."""
+    progress = Signal(float)
+    finished_signal = Signal(bool, str)
+
+    def __init__(self, input_path, output_path, preset, parent=None):
+        super().__init__(parent)
+        self.input_path = input_path
+        self.output_path = output_path
+        self.preset = preset
         self._cancelled = False
+        self._process = None
 
-    def compress(self, input_path: str, output_path: str, preset_key: str,
-                 on_progress: Callable[[float], None] = None,
-                 on_complete: Callable[[bool, str], None] = None):
-        self._cancelled = False
-        preset = PRESETS.get(preset_key)
-        if not preset:
-            if on_complete:
-                on_complete(False, f"Unknown preset: {preset_key}")
-            return
+    def run(self):
+        preset = self.preset
 
-        thread = threading.Thread(
-            target=self._run_compression,
-            args=(input_path, output_path, preset, on_progress, on_complete),
-            daemon=True
-        )
-        thread.start()
-
-    def _run_compression(self, input_path, output_path, preset, on_progress, on_complete):
-        ffmpeg = get_ffmpeg_path()
-
+        # Handle simple copy mode
         if preset.codec == "copy":
             try:
-                if on_progress:
-                    on_progress(0.0)
-                shutil.copy2(input_path, output_path)
-                if on_progress:
-                    on_progress(100.0)
-                if on_complete:
-                    on_complete(True, "File copied successfully.")
+                self.progress.emit(0.0)
+                shutil.copy2(self.input_path, self.output_path)
+                self.progress.emit(100.0)
+                self.finished_signal.emit(True, "File copied successfully.")
             except Exception as e:
-                if on_complete:
-                    on_complete(False, str(e))
+                self.finished_signal.emit(False, str(e))
             return
 
-        duration = get_video_duration(input_path)
+        ffmpeg = get_ffmpeg_path()
+        duration = get_video_duration(self.input_path)
 
-        cmd = [ffmpeg, "-i", input_path, "-y"]
+        # Build FFmpeg command
+        cmd = [ffmpeg, "-i", self.input_path, "-y"]
         cmd.extend(["-c:v", preset.codec])
         if preset.crf is not None:
             cmd.extend(["-crf", str(preset.crf)])
@@ -160,7 +152,7 @@ class CompressionWorker:
             cmd.extend(["-b:a", preset.audio_bitrate])
         cmd.extend(["-c:s", "copy"])
         cmd.extend(["-progress", "pipe:1", "-nostats"])
-        cmd.append(output_path)
+        cmd.append(self.output_path)
 
         try:
             creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
@@ -172,9 +164,8 @@ class CompressionWorker:
             for line in self._process.stdout:
                 if self._cancelled:
                     self._process.terminate()
-                    self._cleanup(output_path)
-                    if on_complete:
-                        on_complete(False, "Compression cancelled.")
+                    self._cleanup()
+                    self.finished_signal.emit(False, "Compression cancelled.")
                     return
 
                 if line.startswith("out_time_ms="):
@@ -183,31 +174,25 @@ class CompressionWorker:
                         current_seconds = time_us / 1_000_000
                         if duration and duration > 0:
                             percent = min((current_seconds / duration) * 100, 99.9)
-                            if on_progress:
-                                on_progress(percent)
+                            self.progress.emit(percent)
                     except (ValueError, ZeroDivisionError):
                         pass
 
             self._process.wait()
 
             if self._process.returncode == 0:
-                if on_progress:
-                    on_progress(100.0)
-                if on_complete:
-                    on_complete(True, "Compression complete.")
+                self.progress.emit(100.0)
+                self.finished_signal.emit(True, "Compression complete.")
             else:
                 stderr = self._process.stderr.read()
-                self._cleanup(output_path)
-                if on_complete:
-                    on_complete(False, f"FFmpeg error: {stderr[:500]}")
+                self._cleanup()
+                self.finished_signal.emit(False, f"FFmpeg error: {stderr[:500]}")
 
         except FileNotFoundError:
-            if on_complete:
-                on_complete(False, "FFmpeg not found. Please ensure FFmpeg is available.")
+            self.finished_signal.emit(False, "FFmpeg not found. Please ensure FFmpeg is available.")
         except Exception as e:
-            self._cleanup(output_path)
-            if on_complete:
-                on_complete(False, f"Error: {str(e)}")
+            self._cleanup()
+            self.finished_signal.emit(False, f"Error: {str(e)}")
         finally:
             self._process = None
 
@@ -219,9 +204,9 @@ class CompressionWorker:
             except Exception:
                 pass
 
-    def _cleanup(self, output_path: str):
+    def _cleanup(self):
         try:
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            if os.path.exists(self.output_path):
+                os.remove(self.output_path)
         except Exception:
             pass
