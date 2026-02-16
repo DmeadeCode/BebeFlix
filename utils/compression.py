@@ -144,38 +144,18 @@ class CompressionThread(QThread):
         # Build FFmpeg command
         cmd = [ffmpeg, "-i", self.input_path, "-y"]
 
-        # Check if input has subtitle streams
-        has_subs = False
-        try:
-            probe = subprocess.run(
-                [ffmpeg, "-i", self.input_path],
-                stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True,
-                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
-            )
-            has_subs = "Subtitle:" in probe.stderr
-        except Exception:
-            pass
-
-        # Map streams: video + audio always, subtitles only if present
-        cmd.extend(["-map", "0:v:0", "-map", "0:a?"])
-        if has_subs:
-            cmd.extend(["-map", "0:s?"])
-
+        # Video
         cmd.extend(["-c:v", preset.codec])
         if preset.crf is not None:
             cmd.extend(["-crf", str(preset.crf)])
         cmd.extend(preset.extra_args)
+
+        # Audio
         cmd.extend(["-c:a", preset.audio_codec])
         if preset.audio_bitrate:
             cmd.extend(["-b:a", preset.audio_bitrate])
 
-        # Handle subtitles: .mp4 only supports mov_text, .mkv can copy anything
-        if has_subs:
-            out_ext = os.path.splitext(self.output_path)[1].lower()
-            if out_ext == ".mp4":
-                cmd.extend(["-c:s", "mov_text"])
-            else:
-                cmd.extend(["-c:s", "copy"])
+        # No subtitle handling - external subs are added separately by the player
         cmd.extend(["-progress", "pipe:1", "-nostats"])
         cmd.append(self.output_path)
 
@@ -211,7 +191,10 @@ class CompressionThread(QThread):
             else:
                 stderr = self._process.stderr.read()
                 self._cleanup()
-                self.finished_signal.emit(False, f"FFmpeg error: {stderr[:500]}")
+                # Get the actual error from the end, not the version banner
+                error_msg = stderr.strip().split('\n')
+                last_lines = '\n'.join(error_msg[-10:])
+                self.finished_signal.emit(False, f"FFmpeg error:\n{last_lines[-500:]}")
 
         except FileNotFoundError:
             self.finished_signal.emit(False, "FFmpeg not found. Please ensure FFmpeg is available.")
