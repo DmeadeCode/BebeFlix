@@ -47,7 +47,7 @@ class AddMovieDialog(QDialog):
 
         self.setWindowTitle("Add Content - BebeFlix")
         self.setMinimumWidth(560)
-        self.setMinimumHeight(520)
+        self.setMinimumHeight(580)
         self._setup_ui()
 
         # If adding season to existing show, lock to show mode
@@ -167,15 +167,25 @@ class AddMovieDialog(QDialog):
         new_show_layout.addWidget(QLabel("Show Title:"))
         self.show_title_input = QLineEdit()
         self.show_title_input.setPlaceholderText("Enter show name...")
+        self.show_title_input.setMinimumHeight(36)
         new_show_layout.addWidget(self.show_title_input)
 
         new_show_layout.addWidget(QLabel("Show Poster:"))
         show_thumb_row = QHBoxLayout()
         self.show_thumb_label = QLabel("No file selected")
         self.show_thumb_label.setObjectName("subtitleLabel")
+        self.show_thumb_label.setMinimumHeight(36)
+        self.show_thumb_label.setStyleSheet("""
+            QLabel {
+                background-color: #F5F5F5; border: 1px solid #E0E0E0;
+                border-radius: 6px; padding: 8px 12px; font-size: 12px; color: #757575;
+            }
+        """)
         self.show_thumb_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         show_thumb_row.addWidget(self.show_thumb_label)
         self.show_thumb_btn = QPushButton("Browse...")
+        self.show_thumb_btn.setMinimumHeight(36)
+        self.show_thumb_btn.setFixedWidth(100)
         self.show_thumb_btn.clicked.connect(self._browse_show_thumbnail)
         show_thumb_row.addWidget(self.show_thumb_btn)
         new_show_layout.addLayout(show_thumb_row)
@@ -201,20 +211,26 @@ class AddMovieDialog(QDialog):
 
         ep_row = QHBoxLayout()
         self.episode_list = QListWidget()
-        self.episode_list.setMaximumHeight(120)
+        self.episode_list.setMinimumHeight(140)
         self.episode_list.setStyleSheet("""
             QListWidget {
                 border: 1px solid #E0E0E0; border-radius: 8px;
-                background-color: #FAFAFA; font-size: 12px;
+                background-color: #FAFAFA; font-size: 13px; padding: 4px;
             }
+            QListWidget::item { padding: 4px 8px; }
+            QListWidget::item:hover { background-color: #FFF0F5; }
         """)
         ep_row.addWidget(self.episode_list)
 
         ep_btn_col = QVBoxLayout()
-        self.ep_browse_btn = QPushButton("Add Files")
+        self.ep_browse_btn = QPushButton("Add Files...")
+        self.ep_browse_btn.setMinimumHeight(36)
+        self.ep_browse_btn.setFixedWidth(100)
         self.ep_browse_btn.clicked.connect(self._browse_episodes)
         ep_btn_col.addWidget(self.ep_browse_btn)
-        self.ep_clear_btn = QPushButton("Clear")
+        self.ep_clear_btn = QPushButton("Clear All")
+        self.ep_clear_btn.setMinimumHeight(36)
+        self.ep_clear_btn.setFixedWidth(100)
         self.ep_clear_btn.clicked.connect(self._clear_episodes)
         ep_btn_col.addWidget(self.ep_clear_btn)
         ep_btn_col.addStretch()

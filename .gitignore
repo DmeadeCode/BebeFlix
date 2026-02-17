@@ -12,6 +12,8 @@ dist/
 
 # BebeFlix runtime
 library/
+*.db
+catalog.db
 
 # OS junk
 .DS_Store
