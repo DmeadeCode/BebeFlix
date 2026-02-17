@@ -1,13 +1,14 @@
 """
 Video player widget for BebeFlix.
-Supports movies and TV show episodes with fullscreen auto-hide controls.
+Supports movies and TV show episodes with fullscreen auto-hide controls,
+next episode, and autoplay.
 """
 
 import os
 import sys
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
                                 QPushButton, QSlider, QComboBox, QFrame,
-                                QSizePolicy)
+                                QSizePolicy, QCheckBox)
 from PySide6.QtCore import Qt, Signal, QTimer, Slot
 from PySide6.QtGui import QKeySequence, QShortcut, QCursor
 
@@ -35,13 +36,17 @@ class PlayerWidget(QWidget):
     back_requested = Signal()
     SPEED_OPTIONS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
     SKIP_SECONDS = 10
-    HIDE_DELAY_MS = 3000  # Hide controls after 3 seconds of inactivity
+    HIDE_DELAY_MS = 3000
 
     def __init__(self, db: Database, parent=None):
         super().__init__(parent)
         self.db = db
         self.movie: Movie = None
         self.episode: Episode = None
+        self._episode_list = []      # flat list of all episodes in the show
+        self._current_ep_index = -1  # index into _episode_list
+        self._show_title = ""
+        self._autoplay = True
         self._vlc_instance = None
         self._media_player = None
         self._media = None
@@ -65,7 +70,7 @@ class PlayerWidget(QWidget):
         top_bar = QHBoxLayout()
         top_bar.setContentsMargins(16, 10, 16, 10)
 
-        self.back_btn = QPushButton("<-  Library")
+        self.back_btn = QPushButton("<- Library")
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.setFixedWidth(100)
         self.back_btn.setStyleSheet("""
@@ -79,13 +84,43 @@ class PlayerWidget(QWidget):
         top_bar.addWidget(self.back_btn)
 
         self.movie_title_label = QLabel("")
-        self.movie_title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #C2185B; padding-left: 12px;")
+        self.movie_title_label.setStyleSheet(
+            "font-size: 16px; font-weight: bold; color: #C2185B; padding-left: 12px;")
         top_bar.addWidget(self.movie_title_label)
         top_bar.addStretch()
 
+        # Show-only controls in top bar
+        self.autoplay_check = QCheckBox("Autoplay")
+        self.autoplay_check.setChecked(True)
+        self.autoplay_check.setStyleSheet("""
+            QCheckBox {
+                font-size: 12px; font-weight: 600; color: #D81B60;
+                spacing: 6px; padding: 4px 8px;
+            }
+        """)
+        self.autoplay_check.toggled.connect(self._on_autoplay_toggled)
+        self.autoplay_check.setVisible(False)
+        top_bar.addWidget(self.autoplay_check)
+
+        self.next_ep_btn = QPushButton("Next Ep >>")
+        self.next_ep_btn.setCursor(Qt.PointingHandCursor)
+        self.next_ep_btn.setFixedWidth(100)
+        self.next_ep_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #EC407A; color: #FFFFFF; border: none;
+                border-radius: 16px; padding: 6px 14px; font-weight: 600; font-size: 13px;
+            }
+            QPushButton:hover { background-color: #D81B60; }
+        """)
+        self.next_ep_btn.clicked.connect(self._play_next_episode)
+        self.next_ep_btn.setVisible(False)
+        top_bar.addWidget(self.next_ep_btn)
+
+        top_bar.addSpacing(8)
+
         self.fullscreen_btn = QPushButton("Fullscreen")
         self.fullscreen_btn.setCursor(Qt.PointingHandCursor)
-        self.fullscreen_btn.setFixedWidth(120)
+        self.fullscreen_btn.setFixedWidth(100)
         self.fullscreen_btn.setStyleSheet("""
             QPushButton {
                 background-color: #FFFFFF; color: #D81B60; border: 2px solid #F8BBD0;
@@ -107,7 +142,7 @@ class PlayerWidget(QWidget):
         """)
         layout.addWidget(self.top_widget)
 
-        # Video frame (black)
+        # Video frame
         self.video_frame = QFrame()
         self.video_frame.setStyleSheet("background-color: black;")
         self.video_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -228,6 +263,7 @@ class PlayerWidget(QWidget):
         QShortcut(QKeySequence(Qt.Key_M), self, self._toggle_mute)
         QShortcut(QKeySequence(Qt.Key_Up), self, self._volume_up)
         QShortcut(QKeySequence(Qt.Key_Down), self, self._volume_down)
+        QShortcut(QKeySequence(Qt.Key_N), self, self._play_next_episode)
 
     def _setup_timer(self):
         self._update_timer = QTimer(self)
@@ -235,14 +271,12 @@ class PlayerWidget(QWidget):
         self._update_timer.timeout.connect(self._update_ui)
 
     def _setup_hide_timer(self):
-        """Timer to auto-hide controls in fullscreen."""
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.setInterval(self.HIDE_DELAY_MS)
         self._hide_timer.timeout.connect(self._hide_controls)
 
     def _show_controls(self):
-        """Show controls and cursor, reset hide timer."""
         if not self._controls_visible:
             self.top_widget.setVisible(True)
             self.controls_widget.setVisible(True)
@@ -253,7 +287,6 @@ class PlayerWidget(QWidget):
             self._hide_timer.start()
 
     def _hide_controls(self):
-        """Hide controls and cursor in fullscreen."""
         if not self._is_fullscreen:
             return
         self.top_widget.setVisible(False)
@@ -270,16 +303,30 @@ class PlayerWidget(QWidget):
         self._show_controls()
         super().keyPressEvent(event)
 
-    # ---- Loading ----------------------------------------------------------------------------------------
+    # ---- Show/hide episode controls -------------------------------------------------------
+
+    def _update_episode_controls(self):
+        """Show or hide episode-specific controls."""
+        is_episode = self.episode is not None
+        has_next = self._has_next_episode()
+        self.autoplay_check.setVisible(is_episode)
+        self.next_ep_btn.setVisible(is_episode and has_next)
+
+    def _has_next_episode(self):
+        return (self._episode_list
+                and 0 <= self._current_ep_index < len(self._episode_list) - 1)
+
+    # ---- Loading --------------------------------------------------------------------------
 
     def load_movie(self, movie: Movie):
-        """Load a movie for playback."""
         self.movie = movie
         self.episode = None
+        self._episode_list = []
+        self._current_ep_index = -1
+        self._show_title = ""
         self.movie_title_label.setText(movie.title)
         movie_abs = os.path.join(get_library_root(), movie.movie_path)
         self._load_media(movie_abs)
-        # Load subtitles
         if movie.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(movie.last_position))
         QTimer.singleShot(1000, self._populate_subtitles)
@@ -287,25 +334,33 @@ class PlayerWidget(QWidget):
             if sub_path:
                 sub_abs = os.path.join(get_library_root(), sub_path)
                 if os.path.exists(sub_abs):
-                    self._media_player.add_slave(vlc.MediaSlaveType.subtitle, f"file:///{sub_abs}", True)
+                    self._media_player.add_slave(
+                        vlc.MediaSlaveType.subtitle, f"file:///{sub_abs}", True)
+        self._update_episode_controls()
 
-    def load_episode(self, episode: Episode, show_title: str = ""):
-        """Load a TV show episode for playback."""
+    def load_episode(self, episode: Episode, show_title: str = "",
+                     episode_list: list = None, episode_index: int = -1):
+        """Load a TV show episode. Optionally pass full episode list for next/autoplay."""
         self.episode = episode
         self.movie = None
+        self._show_title = show_title
+        self._episode_list = episode_list or []
+        self._current_ep_index = episode_index
+
         display = f"{show_title} - " if show_title else ""
         display += f"E{episode.episode_number}"
         if episode.title:
             display += f": {episode.title}"
         self.movie_title_label.setText(display)
+
         ep_abs = os.path.join(get_library_root(), episode.movie_path)
         self._load_media(ep_abs)
         if episode.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(episode.last_position))
         QTimer.singleShot(1000, self._populate_subtitles)
+        self._update_episode_controls()
 
     def _load_media(self, file_path: str):
-        """Common media loading logic."""
         if not VLC_AVAILABLE:
             self.movie_title_label.setText("VLC not available - install VLC to play movies")
             return
@@ -327,7 +382,41 @@ class PlayerWidget(QWidget):
         self._update_timer.start()
         self.speed_combo.setCurrentIndex(self.SPEED_OPTIONS.index(1.0))
 
-    # ---- Playback Controls --------------------------------------------------------------------
+    # ---- Next Episode ---------------------------------------------------------------------
+
+    def _play_next_episode(self):
+        if not self._has_next_episode():
+            return
+        # Save current position first
+        self._save_position()
+        if self._media_player:
+            self._media_player.stop()
+        self._current_ep_index += 1
+        next_ep = self._episode_list[self._current_ep_index]
+        # Reload the episode from DB for fresh position data
+        self.episode = next_ep
+        display = f"{self._show_title} - " if self._show_title else ""
+        display += f"E{next_ep.episode_number}"
+        if next_ep.title:
+            display += f": {next_ep.title}"
+        self.movie_title_label.setText(display)
+
+        ep_abs = os.path.join(get_library_root(), next_ep.movie_path)
+        self._media = self._vlc_instance.media_new(ep_abs)
+        self._media_player.set_media(self._media)
+        self._media_player.play()
+        self._is_playing = True
+        self.play_pause_btn.setText("Pause")
+        self._duration = 0
+        self._update_timer.start()
+        self.speed_combo.setCurrentIndex(self.SPEED_OPTIONS.index(1.0))
+        QTimer.singleShot(1000, self._populate_subtitles)
+        self._update_episode_controls()
+
+    def _on_autoplay_toggled(self, checked):
+        self._autoplay = checked
+
+    # ---- Playback Controls ----------------------------------------------------------------
 
     def stop(self):
         if self._media_player:
@@ -500,5 +589,8 @@ class PlayerWidget(QWidget):
                 self.db.update_playback_position(self.movie.id, 0)
             elif self.episode:
                 self.db.update_episode_position(self.episode.id, 0)
+                # Autoplay next episode
+                if self._autoplay and self._has_next_episode():
+                    QTimer.singleShot(1500, self._play_next_episode)
         if self._is_playing:
             self._save_position()

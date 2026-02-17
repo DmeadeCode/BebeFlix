@@ -304,8 +304,18 @@ class MainWindow(QMainWindow):
 
     @Slot(Episode, str)
     def _on_play_episode(self, episode, show_title):
+        # Build flat episode list from the current show for next/autoplay
+        episode_list = []
+        ep_index = -1
+        show = self.show_detail.show
+        if show:
+            for season in show.seasons:
+                for ep in season.episodes:
+                    if ep.id == episode.id:
+                        ep_index = len(episode_list)
+                    episode_list.append(ep)
         self.stack.setCurrentIndex(self.PAGE_PLAYER)
-        self.player.load_episode(episode, show_title)
+        self.player.load_episode(episode, show_title, episode_list, ep_index)
 
     @Slot(Show)
     def _on_add_season(self, show):

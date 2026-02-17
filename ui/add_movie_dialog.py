@@ -57,9 +57,21 @@ class AddMovieDialog(QDialog):
             self.movie_radio.setEnabled(False)
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setSpacing(0)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        # Scrollable form area
+        from PySide6.QtWidgets import QScrollArea
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        form_widget = QWidget()
+        layout = QVBoxLayout(form_widget)
         layout.setSpacing(12)
-        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setContentsMargins(24, 24, 24, 16)
 
         header = QLabel("Add to Library")
         header.setStyleSheet("font-size: 20px; font-weight: bold; color: #D81B60;")
@@ -265,7 +277,14 @@ class AddMovieDialog(QDialog):
         layout.addWidget(self.status_label)
 
         layout.addStretch()
-        btn_row = QHBoxLayout()
+        scroll.setWidget(form_widget)
+        outer.addWidget(scroll)
+
+        # Fixed footer with buttons (outside scroll)
+        footer = QWidget()
+        footer.setStyleSheet("background-color: #FAFAFA; border-top: 1px solid #E0E0E0;")
+        btn_row = QHBoxLayout(footer)
+        btn_row.setContentsMargins(24, 12, 24, 12)
         btn_row.addStretch()
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.clicked.connect(self._on_cancel)
@@ -274,7 +293,7 @@ class AddMovieDialog(QDialog):
         self.add_btn.setObjectName("primaryButton")
         self.add_btn.clicked.connect(self._on_add)
         btn_row.addWidget(self.add_btn)
-        layout.addLayout(btn_row)
+        outer.addWidget(footer)
 
     # ---- Mode switching --------------------------------------------------------------------------
 
