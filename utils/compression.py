@@ -123,6 +123,7 @@ class CompressionThread(QThread):
         self.preset = preset
         self._cancelled = False
         self._process = None
+        self._stderr_file = None
 
     def run(self):
         preset = self.preset
@@ -161,8 +162,16 @@ class CompressionThread(QThread):
 
         try:
             creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+
+            # Write stderr to temp file to avoid pipe deadlock
+            # (reading stdout for progress while stderr fills its buffer = freeze)
+            import tempfile
+            self._stderr_file = tempfile.NamedTemporaryFile(
+                mode='w', suffix='.log', delete=False, prefix='bebeflix_'
+            )
+
             self._process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                cmd, stdout=subprocess.PIPE, stderr=self._stderr_file,
                 text=True, creationflags=creation_flags
             )
 
@@ -189,9 +198,15 @@ class CompressionThread(QThread):
                 self.progress.emit(100.0)
                 self.finished_signal.emit(True, "Compression complete.")
             else:
-                stderr = self._process.stderr.read()
+                # Read the actual error from the temp log file
+                stderr = ""
+                try:
+                    self._stderr_file.close()
+                    with open(self._stderr_file.name, 'r') as f:
+                        stderr = f.read()
+                except Exception:
+                    pass
                 self._cleanup()
-                # Get the actual error from the end, not the version banner
                 error_msg = stderr.strip().split('\n')
                 last_lines = '\n'.join(error_msg[-10:])
                 self.finished_signal.emit(False, f"FFmpeg error:\n{last_lines[-500:]}")
@@ -203,6 +218,16 @@ class CompressionThread(QThread):
             self.finished_signal.emit(False, f"Error: {str(e)}")
         finally:
             self._process = None
+            # Clean up temp log file
+            if self._stderr_file:
+                try:
+                    self._stderr_file.close()
+                except Exception:
+                    pass
+                try:
+                    os.remove(self._stderr_file.name)
+                except Exception:
+                    pass
 
     def cancel(self):
         self._cancelled = True
