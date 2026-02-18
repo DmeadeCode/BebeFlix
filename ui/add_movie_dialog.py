@@ -282,15 +282,31 @@ class AddMovieDialog(QDialog):
 
         # Fixed footer with buttons (outside scroll)
         footer = QWidget()
+        footer.setFixedHeight(60)
         footer.setStyleSheet("background-color: #FAFAFA; border-top: 1px solid #E0E0E0;")
         btn_row = QHBoxLayout(footer)
-        btn_row.setContentsMargins(24, 12, 24, 12)
+        btn_row.setContentsMargins(24, 10, 24, 10)
         btn_row.addStretch()
         self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 20px; border-radius: 14px; font-size: 13px;
+                font-weight: 600; background: #FFFFFF; color: #2C2C2C;
+                border: 2px solid #E0E0E0; min-width: 80px;
+            }
+            QPushButton:hover { background: #FCE4EC; border-color: #F48FB1; color: #D81B60; }
+        """)
         self.cancel_btn.clicked.connect(self._on_cancel)
         btn_row.addWidget(self.cancel_btn)
         self.add_btn = QPushButton("Add to Library")
-        self.add_btn.setObjectName("primaryButton")
+        self.add_btn.setStyleSheet("""
+            QPushButton {
+                padding: 8px 20px; border-radius: 14px; font-size: 13px;
+                font-weight: bold; background: #EC407A; color: #FFFFFF;
+                border: none; min-width: 120px;
+            }
+            QPushButton:hover { background: #D81B60; }
+        """)
         self.add_btn.clicked.connect(self._on_add)
         btn_row.addWidget(self.add_btn)
         outer.addWidget(footer)

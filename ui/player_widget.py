@@ -191,22 +191,40 @@ class PlayerWidget(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
+        compact_btn_style = """
+            QPushButton {
+                padding: 6px 8px; border-radius: 12px; font-size: 12px;
+                font-weight: 600; background: #FFFFFF; color: #2C2C2C;
+                border: 2px solid #E0E0E0;
+            }
+            QPushButton:hover { background: #FCE4EC; border-color: #F48FB1; color: #D81B60; }
+        """
+        play_btn_style = """
+            QPushButton {
+                padding: 6px 8px; border-radius: 12px; font-size: 12px;
+                font-weight: bold; background: #F48FB1; color: #FFFFFF; border: none;
+            }
+            QPushButton:hover { background: #EC407A; }
+        """
+
         self.skip_back_btn = QPushButton("-10s")
         self.skip_back_btn.setCursor(Qt.PointingHandCursor)
-        self.skip_back_btn.setFixedWidth(60)
+        self.skip_back_btn.setFixedWidth(56)
+        self.skip_back_btn.setStyleSheet(compact_btn_style)
         self.skip_back_btn.clicked.connect(self.skip_backward)
         btn_row.addWidget(self.skip_back_btn)
 
         self.play_pause_btn = QPushButton("Play")
         self.play_pause_btn.setCursor(Qt.PointingHandCursor)
-        self.play_pause_btn.setFixedWidth(80)
-        self.play_pause_btn.setObjectName("primaryButton")
+        self.play_pause_btn.setFixedWidth(70)
+        self.play_pause_btn.setStyleSheet(play_btn_style)
         self.play_pause_btn.clicked.connect(self.toggle_play_pause)
         btn_row.addWidget(self.play_pause_btn)
 
         self.skip_fwd_btn = QPushButton("+10s")
         self.skip_fwd_btn.setCursor(Qt.PointingHandCursor)
-        self.skip_fwd_btn.setFixedWidth(60)
+        self.skip_fwd_btn.setFixedWidth(56)
+        self.skip_fwd_btn.setStyleSheet(compact_btn_style)
         self.skip_fwd_btn.clicked.connect(self.skip_forward)
         btn_row.addWidget(self.skip_fwd_btn)
 
