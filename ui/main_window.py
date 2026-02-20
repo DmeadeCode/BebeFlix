@@ -20,7 +20,7 @@ from ui.player_widget import PlayerWidget
 from ui.add_movie_dialog import AddMovieDialog
 from ui.show_detail_widget import ShowDetailWidget
 from ui.styles import LIGHT_THEME, DARK_THEME
-from utils.paths import get_library_root, get_movies_dir
+from utils.paths import get_library_root, get_movies_dir, get_drive_free_space, format_file_size
 
 
 class FlowLayout(QWidget):
@@ -412,15 +412,15 @@ class MainWindow(QMainWindow):
 
         movie_count = self.db.get_movie_count()
         show_count = self.db.get_show_count()
-        parts = []
-        if movie_count:
-            parts.append(f"{movie_count} movie{'s' if movie_count != 1 else ''}")
-        if show_count:
-            parts.append(f"{show_count} show{'s' if show_count != 1 else ''}")
-        if self._search_query:
-            self.count_label.setText(
-                f"{total_items} result{'s' if total_items != 1 else ''}")
-        else:
+        try:
+            free = get_drive_free_space()
+            self.count_label.setText(f"{format_file_size(free)} free")
+        except Exception:
+            parts = []
+            if movie_count:
+                parts.append(f"{movie_count} movie{'s' if movie_count != 1 else ''}")
+            if show_count:
+                parts.append(f"{show_count} show{'s' if show_count != 1 else ''}")
             self.count_label.setText(", ".join(parts) if parts else "Empty")
 
     # ---- Event Handlers --------------------------------------------------------------------------
