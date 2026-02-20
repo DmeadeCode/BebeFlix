@@ -17,7 +17,7 @@ from database import Database
 from utils.paths import (get_movies_dir, get_library_root, slugify,
                          make_movie_dir, get_drive_free_space, format_file_size)
 from utils.compression import (PRESETS, PRESET_ORDER, CompressionThread,
-                                get_embedded_subtitles)
+                                get_embedded_subtitles, _detect_gpu_encoder)
 
 
 class AddMovieDialog(QDialog):
@@ -259,6 +259,20 @@ class AddMovieDialog(QDialog):
             self.preset_combo.addItem(str(PRESETS[key]), key)
         self.preset_combo.setCurrentIndex(0)
         layout.addWidget(self.preset_combo)
+
+        # GPU encoding indicator
+        gpu = _detect_gpu_encoder()
+        if gpu:
+            gpu_name = "NVIDIA NVENC" if "nvenc" in gpu else "Intel QuickSync"
+            gpu_label = QLabel(f"GPU acceleration: {gpu_name}")
+            gpu_label.setStyleSheet(
+                "font-size: 11px; color: #4CAF50; font-weight: 600; padding: 2px 0;")
+            layout.addWidget(gpu_label)
+        else:
+            cpu_label = QLabel("CPU encoding (no GPU detected - may be slow)")
+            cpu_label.setStyleSheet(
+                "font-size: 11px; color: #FF9800; font-weight: 600; padding: 2px 0;")
+            layout.addWidget(cpu_label)
 
         self.space_label = QLabel("")
         self.space_label.setObjectName("subtitleLabel")

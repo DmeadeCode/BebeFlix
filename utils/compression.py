@@ -35,25 +35,25 @@ PRESETS = {
         name="Lossless",
         description="Zero quality loss, re-encodes for optimal container (largest files)",
         codec="libx264", crf=0, audio_codec="flac", audio_bitrate="",
-        extra_args=["-preset", "medium"]
+        extra_args=["-preset", "fast"]
     ),
     "high": CompressionPreset(
         name="High Quality",
         description="Visually identical to original, ~40-50% smaller",
         codec="libx264", crf=18, audio_codec="aac", audio_bitrate="192k",
-        extra_args=["-preset", "slow"]
+        extra_args=["-preset", "veryfast"]
     ),
     "balanced": CompressionPreset(
         name="Balanced",
         description="Great quality, ~60-70% smaller",
         codec="libx264", crf=23, audio_codec="aac", audio_bitrate="128k",
-        extra_args=["-preset", "medium"]
+        extra_args=["-preset", "veryfast"]
     ),
     "space_saver": CompressionPreset(
         name="Space Saver",
         description="Good quality, ~75-85% smaller",
         codec="libx264", crf=28, audio_codec="aac", audio_bitrate="96k",
-        extra_args=["-preset", "fast"]
+        extra_args=["-preset", "ultrafast"]
     ),
     "copy": CompressionPreset(
         name="No Compression",
@@ -64,6 +64,47 @@ PRESETS = {
 }
 
 PRESET_ORDER = ["copy", "lossless", "high", "balanced", "space_saver"]
+
+
+def _detect_gpu_encoder() -> Optional[str]:
+    """Check if NVENC (NVIDIA) or QSV (Intel) hardware encoding is available."""
+    ffmpeg = get_ffmpeg_path()
+    try:
+        result = subprocess.run(
+            [ffmpeg, "-encoders"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+        )
+        output = result.stdout
+        # Prefer NVENC (NVIDIA), then QSV (Intel)
+        if "h264_nvenc" in output:
+            return "h264_nvenc"
+        if "h264_qsv" in output:
+            return "h264_qsv"
+    except Exception:
+        pass
+    return None
+
+
+def _build_gpu_cmd(encoder: str, crf_equivalent: Optional[int],
+                   audio_codec: str, audio_bitrate: str) -> list:
+    """Build FFmpeg args for GPU-accelerated encoding."""
+    cmd_parts = ["-c:v", encoder]
+    if encoder == "h264_nvenc":
+        # NVENC uses -cq for constant quality (similar to CRF)
+        if crf_equivalent is not None and crf_equivalent > 0:
+            cmd_parts.extend(["-rc", "constqp", "-qp", str(crf_equivalent)])
+        elif crf_equivalent == 0:
+            cmd_parts.extend(["-rc", "lossless"])
+        cmd_parts.extend(["-preset", "p4"])  # balanced speed/quality
+    elif encoder == "h264_qsv":
+        if crf_equivalent is not None and crf_equivalent > 0:
+            cmd_parts.extend(["-global_quality", str(crf_equivalent)])
+        cmd_parts.extend(["-preset", "faster"])
+    cmd_parts.extend(["-c:a", audio_codec])
+    if audio_bitrate:
+        cmd_parts.extend(["-b:a", audio_bitrate])
+    return cmd_parts
 
 
 def get_video_duration(input_path: str) -> Optional[float]:
@@ -142,23 +183,29 @@ class CompressionThread(QThread):
         ffmpeg = get_ffmpeg_path()
         duration = get_video_duration(self.input_path)
 
-        # Build FFmpeg command
-        cmd = [ffmpeg, "-i", self.input_path, "-y"]
+        # Try GPU-accelerated encoding first
+        gpu_encoder = _detect_gpu_encoder()
 
-        # Video
-        cmd.extend(["-c:v", preset.codec])
-        if preset.crf is not None:
-            cmd.extend(["-crf", str(preset.crf)])
-        cmd.extend(preset.extra_args)
-
-        # Audio
-        cmd.extend(["-c:a", preset.audio_codec])
-        if preset.audio_bitrate:
-            cmd.extend(["-b:a", preset.audio_bitrate])
-
-        # No subtitle handling - external subs are added separately by the player
-        cmd.extend(["-progress", "pipe:1", "-nostats"])
-        cmd.append(self.output_path)
+        if gpu_encoder and preset.crf is not None:
+            cmd = [ffmpeg, "-i", self.input_path, "-y"]
+            cmd.extend(_build_gpu_cmd(
+                gpu_encoder, preset.crf,
+                preset.audio_codec, preset.audio_bitrate
+            ))
+            cmd.extend(["-progress", "pipe:1", "-nostats"])
+            cmd.append(self.output_path)
+        else:
+            # CPU fallback
+            cmd = [ffmpeg, "-i", self.input_path, "-y"]
+            cmd.extend(["-c:v", preset.codec])
+            if preset.crf is not None:
+                cmd.extend(["-crf", str(preset.crf)])
+            cmd.extend(preset.extra_args)
+            cmd.extend(["-c:a", preset.audio_codec])
+            if preset.audio_bitrate:
+                cmd.extend(["-b:a", preset.audio_bitrate])
+            cmd.extend(["-progress", "pipe:1", "-nostats"])
+            cmd.append(self.output_path)
 
         try:
             creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)

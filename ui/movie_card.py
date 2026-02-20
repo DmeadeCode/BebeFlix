@@ -27,7 +27,7 @@ class MovieCard(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setFixedSize(POSTER_WIDTH + 10, POSTER_HEIGHT + 45)
+        self.setFixedSize(POSTER_WIDTH + 10, POSTER_HEIGHT + 65)
         self.setCursor(QCursor(Qt.PointingHandCursor))
         self.setToolTip(f"Click to play: {self.movie.title}")
 
@@ -64,7 +64,7 @@ class MovieCard(QWidget):
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setWordWrap(True)
         self.title_label.setMaximumWidth(POSTER_WIDTH)
-        self.title_label.setMaximumHeight(36)
+        self.title_label.setMaximumHeight(54)
         layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
 
         shadow = QGraphicsDropShadowEffect()
@@ -145,7 +145,7 @@ class ShowCard(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        self.setFixedSize(POSTER_WIDTH + 10, POSTER_HEIGHT + 45)
+        self.setFixedSize(POSTER_WIDTH + 10, POSTER_HEIGHT + 65)
         self.setCursor(QCursor(Qt.PointingHandCursor))
 
         ep_count = sum(len(s.episodes) for s in self.show.seasons)
@@ -171,7 +171,7 @@ class ShowCard(QWidget):
         self.title_label.setAlignment(Qt.AlignCenter)
         self.title_label.setWordWrap(True)
         self.title_label.setMaximumWidth(POSTER_WIDTH)
-        self.title_label.setMaximumHeight(36)
+        self.title_label.setMaximumHeight(54)
         layout.addWidget(self.title_label, alignment=Qt.AlignCenter)
 
         shadow = QGraphicsDropShadowEffect()
