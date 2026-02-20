@@ -122,6 +122,11 @@ class Database:
                     date_added      DATETIME DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL DEFAULT ''
+                );
             """)
             conn.commit()
         finally:
@@ -473,5 +478,105 @@ class Database:
             conn.execute("DELETE FROM shows WHERE id = ?", (show_id,))
             conn.commit()
             return show
+        finally:
+            conn.close()
+
+    # ---- Rename -------------------------------------------------------------------------------------------
+
+    def rename_movie(self, movie_id: int, new_title: str):
+        conn = self._get_conn()
+        try:
+            conn.execute("UPDATE movies SET title = ? WHERE id = ?", (new_title, movie_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def rename_show(self, show_id: int, new_title: str):
+        conn = self._get_conn()
+        try:
+            conn.execute("UPDATE shows SET title = ? WHERE id = ?", (new_title, show_id))
+            conn.commit()
+        finally:
+            conn.close()
+
+    # ---- Continue Watching --------------------------------------------------------------------------------
+
+    def get_continue_watching(self, limit: int = 20) -> list:
+        """Return list of (type, item) for movies/episodes with progress.
+        Returns dicts with type='movie' or type='episode' plus show info."""
+        conn = self._get_conn()
+        try:
+            results = []
+            # Movies in progress
+            movie_rows = conn.execute(
+                """SELECT * FROM movies
+                   WHERE last_position > 0 AND duration > 0
+                     AND (last_position / duration) < 0.95
+                   ORDER BY date_added DESC"""
+            ).fetchall()
+            for row in movie_rows:
+                movie = Movie(
+                    id=row["id"], title=row["title"],
+                    movie_path=row["movie_path"], thumb_path=row["thumb_path"],
+                    date_added=row["date_added"], last_position=row["last_position"],
+                    duration=row["duration"]
+                )
+                subs = conn.execute(
+                    "SELECT sub_path, label FROM subtitles WHERE movie_id = ?",
+                    (row["id"],)
+                ).fetchall()
+                movie.subtitle_paths = [(s["sub_path"], s["label"]) for s in subs]
+                results.append({"type": "movie", "item": movie})
+
+            # Episodes in progress
+            ep_rows = conn.execute(
+                """SELECT e.*, s.show_id, s.season_number, sh.title as show_title,
+                          sh.thumb_path as show_thumb
+                   FROM episodes e
+                   JOIN seasons s ON e.season_id = s.id
+                   JOIN shows sh ON s.show_id = sh.id
+                   WHERE e.last_position > 0 AND e.duration > 0
+                     AND (e.last_position / e.duration) < 0.95
+                   ORDER BY e.date_added DESC"""
+            ).fetchall()
+            for row in ep_rows:
+                ep = Episode(
+                    id=row["id"], season_id=row["season_id"],
+                    episode_number=row["episode_number"], title=row["title"],
+                    movie_path=row["movie_path"], last_position=row["last_position"],
+                    duration=row["duration"], date_added=row["date_added"]
+                )
+                results.append({
+                    "type": "episode", "item": ep,
+                    "show_title": row["show_title"],
+                    "show_id": row["show_id"],
+                    "show_thumb": row["show_thumb"],
+                    "season_number": row["season_number"]
+                })
+
+            return results[:limit]
+        finally:
+            conn.close()
+
+    # ---- Settings -----------------------------------------------------------------------------------------
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+            return row["value"] if row else default
+        finally:
+            conn.close()
+
+    def set_setting(self, key: str, value: str):
+        conn = self._get_conn()
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, value)
+            )
+            conn.commit()
         finally:
             conn.close()

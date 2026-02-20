@@ -15,14 +15,14 @@ from utils.paths import get_library_root
 
 
 class EpisodeRow(QFrame):
-    """A clickable row representing a single episode."""
+    """A clickable row representing a single episode with progress bar."""
     clicked = Signal(Episode)
 
     def __init__(self, episode: Episode, parent=None):
         super().__init__(parent)
         self.episode = episode
         self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(52)
+        self.setFixedHeight(56)
         self.setStyleSheet("""
             QFrame {
                 background-color: #FFFFFF; border: 1px solid #F0F0F0;
@@ -31,8 +31,15 @@ class EpisodeRow(QFrame):
             QFrame:hover { background-color: #FFF0F5; border-color: #F48FB1; }
         """)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 8, 16, 8)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # Main info row
+        info_widget = QWidget()
+        info_widget.setStyleSheet("background: transparent; border: none;")
+        layout = QHBoxLayout(info_widget)
+        layout.setContentsMargins(16, 8, 16, 4)
         layout.setSpacing(12)
 
         ep_num = QLabel(f"E{episode.episode_number}")
@@ -60,6 +67,20 @@ class EpisodeRow(QFrame):
         play_label = QLabel(">>")
         play_label.setStyleSheet("font-size: 14px; color: #F48FB1;")
         layout.addWidget(play_label)
+        outer.addWidget(info_widget)
+
+        # Progress bar at bottom of row
+        self.progress_bar = QFrame()
+        self.progress_bar.setFixedHeight(3)
+        self.progress_bar.setStyleSheet("border: none; background: transparent;")
+        if episode.duration > 0 and episode.last_position > 0:
+            pct = min(episode.last_position / episode.duration, 1.0) * 100
+            self.progress_bar.setStyleSheet(
+                f"background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+                f"stop:0 #EC407A, stop:{pct/100:.3f} #EC407A, "
+                f"stop:{pct/100 + 0.001:.3f} #40404040, stop:1 #40404040); "
+                f"border: none; border-radius: 1px; margin: 0 8px;")
+        outer.addWidget(self.progress_bar)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
