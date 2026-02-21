@@ -261,7 +261,18 @@ class PlayerWidget(QWidget):
 
         btn_row.addSpacing(12)
 
-        sub_label = QLabel("Subtitles:")
+        audio_label = QLabel("Audio:")
+        audio_label.setStyleSheet("font-size: 12px; color: #757575; font-weight: 500;")
+        btn_row.addWidget(audio_label)
+
+        self.audio_combo = QComboBox()
+        self.audio_combo.addItem("Default", -1)
+        self.audio_combo.currentIndexChanged.connect(self._on_audio_changed)
+        btn_row.addWidget(self.audio_combo)
+
+        btn_row.addSpacing(12)
+
+        sub_label = QLabel("Subs:")
         sub_label.setStyleSheet("font-size: 12px; color: #757575; font-weight: 500;")
         btn_row.addWidget(sub_label)
 
@@ -347,7 +358,7 @@ class PlayerWidget(QWidget):
         self._load_media(movie_abs)
         if movie.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(movie.last_position))
-        QTimer.singleShot(1000, self._populate_subtitles)
+        QTimer.singleShot(1000, self._populate_tracks)
         for sub_path, label in movie.subtitle_paths:
             if sub_path:
                 sub_abs = os.path.join(get_library_root(), sub_path)
@@ -375,7 +386,7 @@ class PlayerWidget(QWidget):
         self._load_media(ep_abs)
         if episode.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(episode.last_position))
-        QTimer.singleShot(1000, self._populate_subtitles)
+        QTimer.singleShot(1000, self._populate_tracks)
         self._update_episode_controls()
 
     def _load_media(self, file_path: str):
@@ -428,7 +439,7 @@ class PlayerWidget(QWidget):
         self._duration = 0
         self._update_timer.start()
         self.speed_combo.setCurrentIndex(self.SPEED_OPTIONS.index(1.0))
-        QTimer.singleShot(1000, self._populate_subtitles)
+        QTimer.singleShot(1000, self._populate_tracks)
         self._update_episode_controls()
 
     def _on_autoplay_toggled(self, checked):
@@ -521,6 +532,10 @@ class PlayerWidget(QWidget):
             if dur > 0 and self.episode.duration == 0:
                 self.db.update_episode_duration(self.episode.id, dur / 1000.0)
 
+    def _populate_tracks(self):
+        self._populate_subtitles()
+        self._populate_audio_tracks()
+
     def _populate_subtitles(self):
         if not self._media_player:
             return
@@ -538,6 +553,49 @@ class PlayerWidget(QWidget):
         except Exception:
             pass
         self.subtitle_combo.blockSignals(False)
+
+    def _populate_audio_tracks(self):
+        if not self._media_player:
+            return
+        self.audio_combo.blockSignals(True)
+        self.audio_combo.clear()
+        try:
+            tracks = self._media_player.audio_get_track_description()
+            if tracks:
+                for tid, tname in tracks:
+                    name = tname.decode() if isinstance(tname, bytes) else tname
+                    if tid == -1:
+                        self.audio_combo.addItem("Off", -1)
+                    else:
+                        self.audio_combo.addItem(name, tid)
+                # Select the currently active track
+                current = self._media_player.audio_get_track()
+                for i in range(self.audio_combo.count()):
+                    if self.audio_combo.itemData(i) == current:
+                        self.audio_combo.setCurrentIndex(i)
+                        break
+            else:
+                self.audio_combo.addItem("Default", -1)
+        except Exception:
+            self.audio_combo.addItem("Default", -1)
+        self.audio_combo.blockSignals(False)
+        # Hide if only one real track (no choice to make)
+        real_tracks = self.audio_combo.count() - (
+            1 if self.audio_combo.itemData(0) == -1 else 0)
+        self.audio_combo.setVisible(real_tracks > 1)
+        # Also hide the label
+        parent_layout = self.audio_combo.parentWidget()
+        if parent_layout:
+            # Find the Audio: label right before the combo
+            layout = self.audio_combo.parent().layout()
+            if layout:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item and item.widget() == self.audio_combo and i > 0:
+                        prev = layout.itemAt(i - 1)
+                        if prev and prev.widget():
+                            prev.widget().setVisible(real_tracks > 1)
+                        break
 
     def _on_seek_start(self):
         self._seeking = True
@@ -565,6 +623,11 @@ class PlayerWidget(QWidget):
         tid = self.subtitle_combo.currentData()
         if self._media_player and tid is not None:
             self._media_player.video_set_spu(tid)
+
+    def _on_audio_changed(self, index):
+        tid = self.audio_combo.currentData()
+        if self._media_player and tid is not None:
+            self._media_player.audio_set_track(tid)
 
     def _toggle_mute(self):
         if self._media_player:
