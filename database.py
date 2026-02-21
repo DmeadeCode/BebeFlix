@@ -311,6 +311,37 @@ class Database:
         finally:
             conn.close()
 
+    def get_or_create_season(self, show_id: int, season_number: int) -> int:
+        """Return existing season ID or create a new one."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT id FROM seasons WHERE show_id = ? AND season_number = ?",
+                (show_id, season_number)
+            ).fetchone()
+            if row:
+                return row["id"]
+            cursor = conn.execute(
+                "INSERT INTO seasons (show_id, season_number) VALUES (?, ?)",
+                (show_id, season_number)
+            )
+            conn.commit()
+            return cursor.lastrowid
+        finally:
+            conn.close()
+
+    def get_season_episode_count(self, season_id: int) -> int:
+        """Return how many episodes exist in a season."""
+        conn = self._get_conn()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM episodes WHERE season_id = ?",
+                (season_id,)
+            ).fetchone()
+            return row["cnt"]
+        finally:
+            conn.close()
+
     def add_episode(self, season_id: int, episode_number: int,
                     title: str, movie_path: str) -> int:
         conn = self._get_conn()

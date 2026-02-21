@@ -89,14 +89,15 @@ def _detect_gpu_encoder() -> Optional[str]:
 def _build_gpu_cmd(encoder: str, crf_equivalent: Optional[int],
                    audio_codec: str, audio_bitrate: str) -> list:
     """Build FFmpeg args for GPU-accelerated encoding."""
-    cmd_parts = ["-c:v", encoder]
+    # Map all video and audio streams (needed for dual-audio MKV files)
+    cmd_parts = ["-c:v", encoder, "-pix_fmt", "yuv420p"]
     if encoder == "h264_nvenc":
         # NVENC uses -cq for constant quality (similar to CRF)
         if crf_equivalent is not None and crf_equivalent > 0:
-            cmd_parts.extend(["-rc", "constqp", "-qp", str(crf_equivalent)])
+            cmd_parts.extend(["-rc", "vbr", "-cq", str(crf_equivalent)])
         elif crf_equivalent == 0:
             cmd_parts.extend(["-rc", "lossless"])
-        cmd_parts.extend(["-preset", "p4"])  # balanced speed/quality
+        cmd_parts.extend(["-preset", "p4"])
     elif encoder == "h264_qsv":
         if crf_equivalent is not None and crf_equivalent > 0:
             cmd_parts.extend(["-global_quality", str(crf_equivalent)])
@@ -163,6 +164,7 @@ class CompressionThread(QThread):
         self.output_path = output_path
         self.preset = preset
         self._cancelled = False
+        self._use_gpu = False
         self._process = None
         self._stderr_file = None
 
@@ -185,18 +187,30 @@ class CompressionThread(QThread):
 
         # Try GPU-accelerated encoding first
         gpu_encoder = _detect_gpu_encoder()
+        self._use_gpu = bool(gpu_encoder and preset.crf is not None)
 
-        if gpu_encoder and preset.crf is not None:
-            cmd = [ffmpeg, "-i", self.input_path, "-y"]
+        cmd = self._build_cmd(ffmpeg, preset, gpu_encoder)
+
+        success = self._run_ffmpeg(cmd, duration)
+
+        # If GPU failed, retry with CPU
+        if not success and self._use_gpu and not self._cancelled:
+            self._use_gpu = False
+            self._cleanup()
+            cpu_cmd = self._build_cmd(ffmpeg, preset, None)
+            self._run_ffmpeg(cpu_cmd, duration)
+
+    def _build_cmd(self, ffmpeg, preset, gpu_encoder):
+        cmd = [ffmpeg, "-i", self.input_path, "-y"]
+        # Map all video and audio streams for dual-audio support
+        cmd.extend(["-map", "0:v:0", "-map", "0:a"])
+
+        if gpu_encoder and self._use_gpu:
             cmd.extend(_build_gpu_cmd(
                 gpu_encoder, preset.crf,
                 preset.audio_codec, preset.audio_bitrate
             ))
-            cmd.extend(["-progress", "pipe:1", "-nostats"])
-            cmd.append(self.output_path)
         else:
-            # CPU fallback
-            cmd = [ffmpeg, "-i", self.input_path, "-y"]
             cmd.extend(["-c:v", preset.codec])
             if preset.crf is not None:
                 cmd.extend(["-crf", str(preset.crf)])
@@ -204,14 +218,15 @@ class CompressionThread(QThread):
             cmd.extend(["-c:a", preset.audio_codec])
             if preset.audio_bitrate:
                 cmd.extend(["-b:a", preset.audio_bitrate])
-            cmd.extend(["-progress", "pipe:1", "-nostats"])
-            cmd.append(self.output_path)
 
+        cmd.extend(["-progress", "pipe:1", "-nostats"])
+        cmd.append(self.output_path)
+        return cmd
+
+    def _run_ffmpeg(self, cmd, duration) -> bool:
         try:
             creation_flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
-            # Write stderr to temp file to avoid pipe deadlock
-            # (reading stdout for progress while stderr fills its buffer = freeze)
             import tempfile
             self._stderr_file = tempfile.NamedTemporaryFile(
                 mode='w', suffix='.log', delete=False, prefix='bebeflix_'
@@ -227,7 +242,7 @@ class CompressionThread(QThread):
                     self._process.terminate()
                     self._cleanup()
                     self.finished_signal.emit(False, "Compression cancelled.")
-                    return
+                    return False
 
                 if line.startswith("out_time_ms="):
                     try:
@@ -244,8 +259,9 @@ class CompressionThread(QThread):
             if self._process.returncode == 0:
                 self.progress.emit(100.0)
                 self.finished_signal.emit(True, "Compression complete.")
+                return True
             else:
-                # Read the actual error from the temp log file
+                # Read the error from temp log
                 stderr = ""
                 try:
                     self._stderr_file.close()
@@ -253,19 +269,29 @@ class CompressionThread(QThread):
                         stderr = f.read()
                 except Exception:
                     pass
+
+                # If GPU attempt failed, return False to trigger CPU fallback
+                if self._use_gpu:
+                    return False
+
                 self._cleanup()
                 error_msg = stderr.strip().split('\n')
                 last_lines = '\n'.join(error_msg[-10:])
-                self.finished_signal.emit(False, f"FFmpeg error:\n{last_lines[-500:]}")
+                self.finished_signal.emit(
+                    False, f"FFmpeg error:\n{last_lines[-500:]}")
+                return False
 
         except FileNotFoundError:
-            self.finished_signal.emit(False, "FFmpeg not found. Please ensure FFmpeg is available.")
+            self.finished_signal.emit(
+                False, "FFmpeg not found. Please ensure FFmpeg is available.")
+            return False
         except Exception as e:
-            self._cleanup()
-            self.finished_signal.emit(False, f"Error: {str(e)}")
+            if not self._use_gpu:
+                self._cleanup()
+                self.finished_signal.emit(False, f"Error: {str(e)}")
+            return False
         finally:
             self._process = None
-            # Clean up temp log file
             if self._stderr_file:
                 try:
                     self._stderr_file.close()

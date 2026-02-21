@@ -544,7 +544,8 @@ class AddMovieDialog(QDialog):
             show_title = self.show_selector.currentText()
 
         season_num = self.season_spin.value()
-        season_id = self.db.add_season(show_id, season_num)
+        season_id = self.db.get_or_create_season(show_id, season_num)
+        existing_ep_count = self.db.get_season_episode_count(season_id)
         show_slug = slugify(show_title)
 
         # Build episode queue
@@ -553,7 +554,7 @@ class AddMovieDialog(QDialog):
         self._episode_queue = []
 
         for i, ep_path in enumerate(self._episode_paths):
-            ep_num = i + 1
+            ep_num = existing_ep_count + i + 1
             ep_slug = f"s{season_num:02d}e{ep_num:02d}"
             ep_dir = os.path.join(get_movies_dir(), show_slug, ep_slug)
             os.makedirs(ep_dir, exist_ok=True)
