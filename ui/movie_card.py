@@ -1,6 +1,7 @@
 """
 Card widget for the library grid.
 Supports both movies and TV shows, with progress bars and rename.
+Cross-platform path normalization for poster loading.
 """
 
 import os
@@ -10,10 +11,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QCursor, QAction, QColor
 
 from database import Movie, Show
-from utils.paths import get_library_root
+from utils.paths import get_library_root, normalize_path
 
 POSTER_WIDTH = 180
 POSTER_HEIGHT = 270
+
 
 
 class MovieCard(QWidget):
@@ -24,6 +26,7 @@ class MovieCard(QWidget):
     def __init__(self, movie: Movie, parent=None):
         super().__init__(parent)
         self.movie = movie
+        self._has_poster = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -85,7 +88,8 @@ class MovieCard(QWidget):
             self.progress_bar.setStyleSheet("background-color: transparent; border: none;")
 
     def _load_thumbnail(self):
-        thumb_abs = os.path.join(get_library_root(), self.movie.thumb_path)
+        thumb_rel = normalize_path(self.movie.thumb_path)
+        thumb_abs = os.path.join(get_library_root(), thumb_rel)
         if os.path.exists(thumb_abs):
             pixmap = QPixmap(thumb_abs)
             if not pixmap.isNull():
@@ -96,6 +100,7 @@ class MovieCard(QWidget):
                     y = (scaled.height() - POSTER_HEIGHT) // 2
                     scaled = scaled.copy(x, y, POSTER_WIDTH, POSTER_HEIGHT)
                 self.poster_label.setPixmap(scaled)
+                self._has_poster = True
                 return
 
         self.poster_label.setText(self.movie.title)
@@ -107,13 +112,29 @@ class MovieCard(QWidget):
         """)
 
     def enterEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 10px; background-color: #F5F5F5; border: 3px solid #F48FB1; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 10px; border: 3px solid #F48FB1; }")
+        else:
+            self.poster_label.setStyleSheet("""
+                QLabel {
+                    border-radius: 10px; background-color: #FCE4EC; color: #C2185B;
+                    font-size: 14px; font-weight: bold; padding: 20px; border: 3px solid #F48FB1;
+                }
+            """)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 10px; background-color: #F5F5F5; border: 2px solid #F0F0F0; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 10px; border: 2px solid #F0F0F0; }")
+        else:
+            self.poster_label.setStyleSheet("""
+                QLabel {
+                    border-radius: 10px; background-color: #FCE4EC; color: #C2185B;
+                    font-size: 14px; font-weight: bold; padding: 20px; border: 2px solid #F8BBD0;
+                }
+            """)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
@@ -142,6 +163,7 @@ class ShowCard(QWidget):
     def __init__(self, show: Show, parent=None):
         super().__init__(parent)
         self.show = show
+        self._has_poster = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -181,7 +203,8 @@ class ShowCard(QWidget):
         self.poster_label.setGraphicsEffect(shadow)
 
     def _load_thumbnail(self):
-        thumb_abs = os.path.join(get_library_root(), self.show.thumb_path)
+        thumb_rel = normalize_path(self.show.thumb_path)
+        thumb_abs = os.path.join(get_library_root(), thumb_rel)
         if os.path.exists(thumb_abs):
             pixmap = QPixmap(thumb_abs)
             if not pixmap.isNull():
@@ -192,6 +215,7 @@ class ShowCard(QWidget):
                     y = (scaled.height() - POSTER_HEIGHT) // 2
                     scaled = scaled.copy(x, y, POSTER_WIDTH, POSTER_HEIGHT)
                 self.poster_label.setPixmap(scaled)
+                self._has_poster = True
                 return
 
         self.poster_label.setText(f"{self.show.title}\n\n[TV Show]")
@@ -203,13 +227,29 @@ class ShowCard(QWidget):
         """)
 
     def enterEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 10px; background-color: #F5F5F5; border: 3px solid #F48FB1; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 10px; border: 3px solid #F48FB1; }")
+        else:
+            self.poster_label.setStyleSheet("""
+                QLabel {
+                    border-radius: 10px; background-color: #E8F5E9; color: #2E7D32;
+                    font-size: 14px; font-weight: bold; padding: 20px; border: 3px solid #F48FB1;
+                }
+            """)
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 10px; background-color: #F5F5F5; border: 2px solid #F0F0F0; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 10px; border: 2px solid #F0F0F0; }")
+        else:
+            self.poster_label.setStyleSheet("""
+                QLabel {
+                    border-radius: 10px; background-color: #E8F5E9; color: #2E7D32;
+                    font-size: 14px; font-weight: bold; padding: 20px; border: 2px solid #A5D6A7;
+                }
+            """)
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
@@ -231,11 +271,12 @@ class ShowCard(QWidget):
 
 class ContinueCard(QWidget):
     """Smaller horizontal card for Continue Watching row."""
-    clicked = Signal(dict)  # emits the full continue-watching dict
+    clicked = Signal(dict)
 
     def __init__(self, cw_item: dict, parent=None):
         super().__init__(parent)
         self.cw_item = cw_item
+        self._has_poster = False
         self._setup_ui()
 
     def _setup_ui(self):
@@ -291,9 +332,9 @@ class ContinueCard(QWidget):
 
     def _load_thumbnail(self):
         if self.cw_item["type"] == "movie":
-            thumb_rel = self.cw_item["item"].thumb_path
+            thumb_rel = normalize_path(self.cw_item["item"].thumb_path)
         else:
-            thumb_rel = self.cw_item.get("show_thumb", "")
+            thumb_rel = normalize_path(self.cw_item.get("show_thumb", ""))
 
         thumb_abs = os.path.join(get_library_root(), thumb_rel)
         if os.path.exists(thumb_abs):
@@ -306,6 +347,7 @@ class ContinueCard(QWidget):
                     y = (scaled.height() - 180) // 2
                     scaled = scaled.copy(x, y, 132, 180)
                 self.poster_label.setPixmap(scaled)
+                self._has_poster = True
                 return
 
         item = self.cw_item["item"]
@@ -321,13 +363,15 @@ class ContinueCard(QWidget):
         """)
 
     def enterEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 8px; background-color: #F5F5F5; border: 3px solid #F48FB1; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 8px; border: 3px solid #F48FB1; }")
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.poster_label.setStyleSheet(
-            "QLabel { border-radius: 8px; background-color: #F5F5F5; border: 2px solid #F0F0F0; }")
+        if self._has_poster:
+            self.poster_label.setStyleSheet(
+                "QLabel { border-radius: 8px; border: 2px solid #F0F0F0; }")
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

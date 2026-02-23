@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal, QTimer, Slot
 from PySide6.QtGui import QKeySequence, QShortcut, QCursor
 
 from database import Movie, Episode, Database
-from utils.paths import get_library_root
+from utils.paths import get_library_root, normalize_path
 
 try:
     import vlc
@@ -354,7 +354,7 @@ class PlayerWidget(QWidget):
         self._current_ep_index = -1
         self._show_title = ""
         self.movie_title_label.setText(movie.title)
-        movie_abs = os.path.join(get_library_root(), movie.movie_path)
+        movie_abs = os.path.join(get_library_root(), normalize_path(movie.movie_path))
         self._load_media(movie_abs)
         if movie.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(movie.last_position))
@@ -382,7 +382,7 @@ class PlayerWidget(QWidget):
             display += f": {episode.title}"
         self.movie_title_label.setText(display)
 
-        ep_abs = os.path.join(get_library_root(), episode.movie_path)
+        ep_abs = os.path.join(get_library_root(), normalize_path(episode.movie_path))
         self._load_media(ep_abs)
         if episode.last_position > 0:
             QTimer.singleShot(500, lambda: self._resume_position(episode.last_position))
@@ -430,7 +430,7 @@ class PlayerWidget(QWidget):
             display += f": {next_ep.title}"
         self.movie_title_label.setText(display)
 
-        ep_abs = os.path.join(get_library_root(), next_ep.movie_path)
+        ep_abs = os.path.join(get_library_root(), normalize_path(next_ep.movie_path))
         self._media = self._vlc_instance.media_new(ep_abs)
         self._media_player.set_media(self._media)
         self._media_player.play()

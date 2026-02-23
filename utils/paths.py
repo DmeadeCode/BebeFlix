@@ -8,6 +8,11 @@ import os
 import sys
 
 
+def normalize_path(rel_path: str) -> str:
+    """Convert Windows backslashes to forward slashes for cross-platform."""
+    return rel_path.replace("\\", "/") if rel_path else rel_path
+
+
 def get_app_root() -> str:
     """Get the directory containing the executable or source."""
     if getattr(sys, 'frozen', False):
