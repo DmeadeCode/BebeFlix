@@ -19,12 +19,19 @@ def get_app_root() -> str:
 def get_drive_root() -> str:
     """
     Get the shared drive root for cross-platform library storage.
-    When frozen (built exe), this is ONE LEVEL UP from the exe folder,
-    so both BebeFlix-Win/ and BebeFlix-Mac/ share the same library/.
-    When running from source, same as app root.
+    Windows: exe is at E:\\BebeFlix-Win\\BebeFlix.exe -> drive root is 1 up
+    macOS:   exe is at /Volumes/X/BebeFlix.app/Contents/MacOS/BebeFlix -> 3 up from app_root
+    Source:  same as app root.
     """
     if getattr(sys, 'frozen', False):
-        return os.path.dirname(get_app_root())
+        app_root = get_app_root()
+        if sys.platform == "darwin":
+            # app_root = .../BebeFlix.app/Contents/MacOS
+            # drive root = 3 levels up (MacOS -> Contents -> BebeFlix.app -> drive)
+            return os.path.dirname(os.path.dirname(os.path.dirname(app_root)))
+        else:
+            # Windows: app_root = .../BebeFlix-Win
+            return os.path.dirname(app_root)
     else:
         return get_app_root()
 
