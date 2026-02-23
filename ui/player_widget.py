@@ -14,6 +14,7 @@ from PySide6.QtGui import QKeySequence, QShortcut, QCursor
 
 from database import Movie, Episode, Database
 from utils.paths import get_library_root, normalize_path
+from utils.sleep_inhibit import SleepInhibitor
 
 try:
     import vlc
@@ -55,6 +56,7 @@ class PlayerWidget(QWidget):
         self._duration = 0
         self._seeking = False
         self._controls_visible = True
+        self._sleep_inhibitor = SleepInhibitor()
         self._setup_ui()
         self._setup_shortcuts()
         self._setup_timer()
@@ -407,6 +409,7 @@ class PlayerWidget(QWidget):
         self._media_player.set_media(self._media)
         self._media_player.play()
         self._is_playing = True
+        self._sleep_inhibitor.inhibit()
         self.play_pause_btn.setText("Pause")
         self._update_timer.start()
         self.speed_combo.setCurrentIndex(self.SPEED_OPTIONS.index(1.0))
@@ -454,6 +457,7 @@ class PlayerWidget(QWidget):
         self._is_playing = False
         self._update_timer.stop()
         self._hide_timer.stop()
+        self._sleep_inhibitor.release()
         self.play_pause_btn.setText("Play")
 
     def toggle_play_pause(self):
@@ -464,10 +468,12 @@ class PlayerWidget(QWidget):
             self._media_player.pause()
             self._is_playing = False
             self.play_pause_btn.setText("Play")
+            self._sleep_inhibitor.release()
         else:
             self._media_player.play()
             self._is_playing = True
             self.play_pause_btn.setText("Pause")
+            self._sleep_inhibitor.inhibit()
 
     def skip_forward(self):
         if self._media_player:
