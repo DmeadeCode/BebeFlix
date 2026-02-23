@@ -117,24 +117,38 @@ def copy_vlc_mac(vlc_dir: str, dest: str):
     vlc_dest = os.path.join(dest, "vlc")
     os.makedirs(vlc_dest, exist_ok=True)
 
-    # Copy dylibs from lib/
+    # Copy dylibs from lib/ - resolve symlinks since ExFAT doesn't support them
     lib_dir = os.path.join(vlc_dir, "lib")
     if os.path.isdir(lib_dir):
         for f in os.listdir(lib_dir):
+            full = os.path.join(lib_dir, f)
+            if f.endswith(".dylib"):
+                real = os.path.realpath(full)
+                # Copy the real file with the symlink name
+                dest_file = os.path.join(vlc_dest, f)
+                shutil.copy2(real, dest_file)
+                print(f"  Copied {f}")
+    else:
+        # Fallback: check for dylibs directly in vlc_dir
+        for f in os.listdir(vlc_dir):
             if f.endswith(".dylib") and "vlc" in f.lower():
-                shutil.copy2(os.path.join(lib_dir, f), vlc_dest)
+                real = os.path.realpath(os.path.join(vlc_dir, f))
+                shutil.copy2(real, os.path.join(vlc_dest, f))
                 print(f"  Copied {f}")
 
     # Plugins
     plugins_src = os.path.join(vlc_dir, "plugins")
     if not os.path.isdir(plugins_src):
-        plugins_src = os.path.join(lib_dir, "vlc", "plugins")
+        plugins_src = os.path.join(lib_dir, "vlc", "plugins") if os.path.isdir(lib_dir) else ""
     plugins_dest = os.path.join(vlc_dest, "plugins")
-    if os.path.isdir(plugins_src):
+    if plugins_src and os.path.isdir(plugins_src):
         if os.path.isdir(plugins_dest):
             shutil.rmtree(plugins_dest)
-        shutil.copytree(plugins_src, plugins_dest)
-        print(f"  Copied plugins/")
+        # Copy resolving symlinks
+        shutil.copytree(plugins_src, plugins_dest, symlinks=False)
+        plugin_count = sum(1 for _ in glob.glob(
+            os.path.join(plugins_dest, "**", "*.dylib"), recursive=True))
+        print(f"  Copied plugins/ ({plugin_count} dylibs)")
 
 
 def copy_ffmpeg(ffmpeg_path: str, dest: str):

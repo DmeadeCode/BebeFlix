@@ -18,8 +18,8 @@ if app_dir not in sys.path:
 # --- VLC setup for bundled builds ---
 # Must happen BEFORE importing vlc module
 if getattr(sys, 'frozen', False):
+    vlc_dir = os.path.join(app_dir, "vlc")
     if sys.platform == "win32":
-        vlc_dir = os.path.join(app_dir, "vlc")
         if os.path.isdir(vlc_dir):
             os.environ["VLC_PLUGIN_PATH"] = os.path.join(vlc_dir, "plugins")
             os.environ["PATH"] = vlc_dir + os.pathsep + os.environ.get("PATH", "")
@@ -28,9 +28,19 @@ if getattr(sys, 'frozen', False):
             except (AttributeError, OSError):
                 pass
     elif sys.platform == "darwin":
-        vlc_dir = os.path.join(app_dir, "vlc")
         if os.path.isdir(vlc_dir):
             os.environ["VLC_PLUGIN_PATH"] = os.path.join(vlc_dir, "plugins")
+            # Preload libvlc via ctypes so python-vlc finds it
+            # (DYLD_LIBRARY_PATH doesn't work when set from within the process)
+            import ctypes
+            for lib_name in ["libvlccore.dylib", "libvlc.dylib"]:
+                lib_path = os.path.join(vlc_dir, lib_name)
+                if os.path.isfile(lib_path):
+                    try:
+                        ctypes.cdll.LoadLibrary(lib_path)
+                    except OSError:
+                        pass
+            # Also set for any subprocess spawning
             os.environ["DYLD_LIBRARY_PATH"] = vlc_dir + os.pathsep + os.environ.get("DYLD_LIBRARY_PATH", "")
 
 # Fix DLL loading on Windows
